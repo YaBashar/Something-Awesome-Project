@@ -69,7 +69,6 @@ def packet_listener(packet):
     packet.accept()
 
 
-
 def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
     print("in here?")
 
@@ -81,7 +80,6 @@ def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
             (pkt[Ether].src == attacker_mac_addr and pkt[Ether].dst == victim_mac_addr) 
         )
 
-    # return pkt.haslayer(DNS) and pkt[DNS].qr == 1 and Ether in pkt and (pkt[Ether].src == router_mac_addr and pkt[Ether].dst == attacker_mac_addr)
 
     pkts = sniff(lfilter = filterPkt, iface = "enp0s3")
     f = open('file.txt', "w")

